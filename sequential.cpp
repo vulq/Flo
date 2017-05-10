@@ -83,7 +83,7 @@ bool bfsLayeredGraph(Graph *g, int *flowMatrix, int *levels, int s, int t) {
                 levels[v] = levels[u] + 1;
                 if (v != t) {
                     bfsQueue.push(v);
-                } else { // TODO: MIGHT NEED TO CHANGE THIS TO NOT RET EARLY
+                } else {
                     return true;
                 }
             }
@@ -138,5 +138,75 @@ Flow *dinicSeq(Graph *g, int s, int t) {
     result->finalEdgeFlows = flowMatrix;
     free(curNeighbor);
     free(levels);
+    return result;
+}
+
+bool push(Graph *g, int *flowMatrix, int *height, int *excessFlow, int u) {
+    for (int v = 0; v < g->n; v++) {
+         int residual = g->capacities[IDX(u, v, g->n)] - flowMatrix[IDX(u, v, g->n)];
+        if ((residual > 0) && (height[u] > height[v])) {
+            int toPush = std::min(excessFlow[u], residual);
+            flowMatrix[IDX(u, v, g->n)] += toPush;
+            flowMatrix[IDX(v, u, g->n)] -= toPush;
+            excessFlow[u] -= toPush;
+            excessFlow[v] += toPush;
+            return true;
+        }
+    }
+    return false;
+}
+
+void relabel(Graph *g, int *flowMatrix, int *height, int u) {
+    int curMin = std::numeric_limits<int>::max();
+    for (int v = 0; v < g->n; v++) {
+        int residual = g->capacities[IDX(u, v, g->n)] - flowMatrix[IDX(u, v, g->n)];
+        if (residual > 0) {
+            curMin = std::min(curMin, height[v]);
+        }
+    }
+    height[u] = curMin + 1;
+}
+
+//Push-relabel algorithm to find max s-t flow
+Flow *pushRelabelSeq(Graph *g, int s, int t) {
+    int *flowMatrix = (int *)calloc((g->n * g->n), sizeof(int));
+    int *height = (int *)calloc(g->n, sizeof(int));
+    int *excessFlow = (int *)calloc(g->n, sizeof(int));
+    bool excessFlowExists = false;
+
+    // first, initialize preflow
+    height[s] = g->n;
+    for (int v = 0; v < g->n; v++) {
+        int cap = g->capacities[IDX(s, v, g->n)];
+        if (cap > 0 && (s != v)) {
+            flowMatrix[IDX(s, v, g->n)] = cap;
+            flowMatrix[IDX(v, s, g->n)] = -cap;
+            excessFlow[v] = cap;
+            if (!excessFlowExists) {
+                excessFlowExists = true;
+            }
+        }
+    }
+
+    while(excessFlowExists) {
+        excessFlowExists = false;
+        for (int v = 0; v < g->n; v++) {
+            if ((v != s) && (v != t) && (excessFlow[v] > 0)) {
+                bool tryPush = push(g, flowMatrix, height, excessFlow, v);
+                if (!tryPush) {
+                    relabel(g, flowMatrix, height, v);
+                }
+                if (!excessFlowExists) {
+                    excessFlowExists = true;
+                }
+            }
+        }
+    }
+
+    Flow *result = (Flow *)malloc(sizeof(Flow));
+    result->maxFlow = excessFlow[t];
+    result->finalEdgeFlows = flowMatrix;
+    free(height);
+    free(excessFlow);
     return result;
 }

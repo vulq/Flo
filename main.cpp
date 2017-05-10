@@ -86,12 +86,13 @@ int main() {
     int refFlow;
     Flow *result;
     bool check;
-    srand(15251); // TODO: change this to time(NULL) for randomness btwn trials
-    int numGraphs = 5; // TODO: increase this to 5 when can. maybe skip last 1 or 2 for EKarp?
+    srand(0); // TODO: change this to time(NULL) for randomness btwn trials
+    int numGraphs = 5;
     // TODO: also maybe use different large graphs for benchmarking different algs? i.e. use
     // the 20k ones and maybe even more, larger (higher V?) ones for Dinic's and Push-relabel 
     // but not EdKarp
-    int smallGraphNum = 1000;
+    int smallGraphNum = 1000; // TODO: shrink/remove this when have correctness, don't run
+                              // all these tests when just trying to benchmark
     int totalGraphs = numGraphs + smallGraphNum;
     double start, finalTime;
     int numVxs[] = {500, 10000, 10000, 20000, 20000};
@@ -100,6 +101,7 @@ int main() {
     Graph *graphs[totalGraphs];
     double edKarpSeqTimes[numGraphs];
     double dinicSeqTimes[numGraphs];
+    double pushRelabelSeqTimes[numGraphs];
     for (int i = 0; i < numGraphs; i++) {
         graphs[i] = generateGraph(numVxs[i], numEdges[i], maxCap[i]);
     }
@@ -155,6 +157,28 @@ int main() {
 
         free(result->finalEdgeFlows);
         free(result);
+
+        // now Push-relabel
+        if (i < 3 || i > 4) {
+            start = CycleTimer::currentSeconds();
+            result = pushRelabelSeq(graphs[i], 0, (graphs[i]->n)-1);
+            finalTime = CycleTimer::currentSeconds() - start;
+            if (i < numGraphs) {
+                pushRelabelSeqTimes[i] = finalTime;
+                std::cout << "pushRelabelSeq time: " << pushRelabelSeqTimes[i] << std::endl;
+                std::cout << "pushRelabelSeq flow: " << result->maxFlow << std::endl;
+            }
+            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+            if (!check) {
+                std::cout << "Push-relabel flows don't agree with max flow on graph " << i << std::endl;
+            }
+            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                std::cout << "Push-relabel flow doesn't agree with refFlow on graph " << i << std::endl;
+            }
+
+            free(result->finalEdgeFlows);
+            free(result);
+        }
 
         // TODO: repeat this for CPU and GPU, and then compare times, output speedup, etc.
 
