@@ -1,17 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <array>
 #include <queue>
+#include <algorithm>
 #include <limits>
 #include "sequential.h"
 
 #define IDX(i, j, n) ((i) * (n) + (j))
 
-int BFS(Graph *g, int *flowMatrix, int *parents, int s, int t) {
+int BFS(Graph *g, int *flowMatrix, int *parents, int *pathCapacities, int s, int t) {
     memset(parents, -1, (g->n * sizeof(int)));
+    memset(pathCapacities, 0, (g->n * sizeof(int)));
     parents[s] = s;
-    int *pathCapacities = (int *)calloc(g->n, sizeof(int));
     pathCapacities[s] = std::numeric_limits<int>::max();
     std::queue<int> bfsQueue;
     bfsQueue.push(s);
@@ -28,13 +28,11 @@ int BFS(Graph *g, int *flowMatrix, int *parents, int s, int t) {
                     bfsQueue.push(v);
                 } else {
                     int result = pathCapacities[t];
-                    free(pathCapacities);
                     return result;
                 }
             }
         }
     }
-    free(pathCapacities);
     return 0;
 }
 
@@ -43,8 +41,9 @@ Flow *edKarpSeq(Graph *g, int s, int t) {
     int flow = 0;
     int *flowMatrix = (int *)calloc((g->n * g->n), sizeof(int));
     int *parents = (int *)malloc(g->n * sizeof(int));
+    int *pathCapacities = (int *)calloc(g->n, sizeof(int));
     while (true) {
-        int tempCapacity = BFS(g, flowMatrix, parents, s, t);
+        int tempCapacity = BFS(g, flowMatrix, parents, pathCapacities, s, t);
         if (tempCapacity == 0) {
             break;
         }
@@ -62,6 +61,7 @@ Flow *edKarpSeq(Graph *g, int s, int t) {
     result->maxFlow = flow;
     result->finalEdgeFlows = flowMatrix;
     free(parents);
+    free(pathCapacities);
     return result;
 }
 

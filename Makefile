@@ -5,7 +5,7 @@ CU_FILES   :=
 
 CU_DEPS    :=
 
-CC_FILES   := sequential.cpp main.cpp
+CC_FILES   := sequential.cpp cpupar.cpp main.cpp
 
 
 ###########################################################
@@ -35,7 +35,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/sequential.o $(OBJDIR)/main.o
+OBJS=$(OBJDIR)/sequential.o $(OBJDIR)/cpupar.o $(OBJDIR)/main.o
 
 
 .PHONY: dirs clean
