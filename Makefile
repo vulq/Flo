@@ -1,11 +1,11 @@
 
 EXECUTABLE := flow_test
 
-CU_FILES   :=
+CU_FILES   := pushRelabelGPU.cu
 
 CU_DEPS    :=
 
-CC_FILES   := main.cpp
+CC_FILES   := sequential.cpp cpupar.cpp main.cpp
 
 
 ###########################################################
@@ -35,7 +35,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/main.o
+OBJS=$(OBJDIR)/sequential.o $(OBJDIR)/cpupar.o $(OBJDIR)/pushRelabelGPU.o $(OBJDIR)/main.o
 
 
 .PHONY: dirs clean
