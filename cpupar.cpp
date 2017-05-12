@@ -318,3 +318,92 @@ Flow *dinicCPU(Graph *g, int s, int t) {
     free(levels);
     return result;
 }
+
+// Push-relabel algorithm to find max s-t flow. Based on lock-free implementation
+// specified by Bo Hong.
+Flow *pushRelabelLockFree(Graph *g, int s, int t) {
+    int *residualFlow = (int *)malloc((g->n * g->n) * sizeof(int));
+    memcpy(residualFlow, g->capacities, (g->n * g->n) * sizeof(int));
+    int *height = (int *)calloc(g->n, sizeof(int));
+    int *excessFlow = (int *)calloc(g->n, sizeof(int));
+
+    // new termination condition: net flow out of s equals net flow into t
+    int netFlowOutS = 0;
+    int netFlowInT = 0;
+
+    // first, initialize preflow
+    height[s] = g->n;
+    #pragma omp parallel for reduction(+:netFlowOutS)
+    for (int v = 0; v < g->n; v++) {
+        int cap = residualFlow[IDX(s, v, g->n)];
+        if (cap > 0 && (s != v)) {
+            residualFlow[IDX(s, v, g->n)] = 0;
+            residualFlow[IDX(v, s, g->n)] += cap;
+            netFlowOutS += cap;
+            excessFlow[v] = cap;
+            if (v == t) {
+                netFlowInT += cap;
+            }
+        }
+    }
+
+    // now break up vertices in chunks
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < omp_get_num_threads(); i++) {
+        int gap = g->n / omp_get_num_threads();
+        int startVx = i * gap;
+        int endVx = startVx + gap; // exclusive
+        if (i == (omp_get_num_threads() - 1)) {
+            endVx = g->n;
+        }
+        while (netFlowOutS != netFlowInT) {
+            for (int u = startVx; u < endVx; u++) {
+                if ((u == s) || (u == t)) continue;
+                while (excessFlow[u] > 0) {
+                    int curExcess = excessFlow[u];
+                    int curLowestNeighbor = -1;
+                    int neighborMinHeight = std::numeric_limits<int>::max();
+                    for (int v = 0; v < g->n; v++) {
+                        if (u == v) continue;
+                        if (residualFlow[IDX(u, v, g->n)] > 0) {
+                            int tempHeight = height[v];
+                            if (tempHeight < neighborMinHeight) {
+                                curLowestNeighbor = v;
+                                neighborMinHeight = tempHeight;
+                            }
+                        }
+                    }
+                    if (height[u] > neighborMinHeight) {
+                        int delta = std::min(curExcess, residualFlow[IDX(u, curLowestNeighbor, g->n)]);
+                        __sync_fetch_and_add(&residualFlow[IDX(u, curLowestNeighbor, g->n)], -delta);
+                        __sync_fetch_and_add(&residualFlow[IDX(curLowestNeighbor, u, g->n)], delta);
+                        __sync_fetch_and_add(&excessFlow[u], -delta);
+                        __sync_fetch_and_add(&excessFlow[curLowestNeighbor], delta);
+                        if (curLowestNeighbor == s) {
+                            __sync_fetch_and_add(&netFlowOutS, -delta);
+                        } else if (curLowestNeighbor == t) {
+                            __sync_fetch_and_add(&netFlowInT, delta);
+                        }
+                    } else {
+                        // doesn't need lock protection, only thread writing 
+                        // to height[u]
+                        height[u] = neighborMinHeight + 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // now update residualFlow to represent actual flow
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < (g->n * g-> n); i++) {
+        residualFlow[i] = g->capacities[i] - residualFlow[i];
+    }
+
+    Flow *result = (Flow *)malloc(sizeof(Flow));
+    result->maxFlow = netFlowInT;
+    result->finalEdgeFlows = residualFlow;
+    free(height);
+    free(excessFlow);
+    return result;
+}

@@ -1,7 +1,7 @@
 
 EXECUTABLE := flow_test
 
-CU_FILES   :=
+CU_FILES   := pushRelabelGPU.cu
 
 CU_DEPS    :=
 
@@ -35,7 +35,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/sequential.o $(OBJDIR)/cpupar.o $(OBJDIR)/main.o
+OBJS=$(OBJDIR)/sequential.o $(OBJDIR)/cpupar.o $(OBJDIR)/pushRelabelGPU.o $(OBJDIR)/main.o
 
 
 .PHONY: dirs clean

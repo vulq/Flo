@@ -9,10 +9,10 @@
 #include "CycleTimer.h"
 #include "sequential.h"
 #include "cpupar.h"
+#include "pushRelabelGPU.h"
 
 #define IDX(i, j, n) ((i) * (n) + (j))
 
-// TODO (maybe): test with one disconnect graph to ensure flow is 0?
 // Generates a random directed graph that ensures there exists some s-t path, where
 // s is node 0 and t is node numVxs - 1. 
 Graph *generateGraph(int numVxs, int numEdges, int maxCap) {
@@ -89,8 +89,8 @@ int main() {
     bool check;
     srand(0); // TODO: change this to time(NULL) for randomness btwn trials
     bool testEdmondsKarp = false;
-    bool testDinics = true;
-    bool testPushRelabel = false;
+    bool testDinics = false;
+    bool testPushRelabel = true;
     int numGraphs = 6;
     // TODO: also maybe use different large graphs for benchmarking different algs? i.e. use
     // the 20k ones and maybe even more, larger (higher V?) ones for Dinic's and Push-relabel 
@@ -108,6 +108,8 @@ int main() {
     double pushRelabelSeqTimes[numGraphs];
     double edKarpCPUTimes[numGraphs];
     double dinicCPUTimes[numGraphs];
+    double pushRelabelCPULFTimes[numGraphs];
+    double pushRelabelGPULFTimes[numGraphs];
     for (int i = 0; i < numGraphs; i++) {
         graphs[i] = generateGraph(numVxs[i], numEdges[i], maxCap[i]);
     }
@@ -170,7 +172,7 @@ int main() {
         }
 
         // now Push-relabel
-        if ((i < 3 || i > 4) && testPushRelabel) {
+        if ((i < 3 || i > 5) && testPushRelabel) {
             start = CycleTimer::currentSeconds();
             result = pushRelabelSeq(graphs[i], 0, (graphs[i]->n)-1);
             finalTime = CycleTimer::currentSeconds() - start;
@@ -185,6 +187,10 @@ int main() {
             }
             if ((refFlow != -1) && (result->maxFlow != refFlow)) {
                 std::cout << "push-relabel flow doesn't agree with refFlow on graph " << i << std::endl;
+            }
+
+            if (refFlow == -1) {
+                refFlow = result->maxFlow;
             }
 
             free(result->finalEdgeFlows);
@@ -231,6 +237,52 @@ int main() {
             }
             if ((refFlow != -1) && (result->maxFlow != refFlow)) {
                 std::cout << "dinicCPU flow doesn't agree with refFlow on graph " << i << std::endl;
+            }
+
+            free(result->finalEdgeFlows);
+            free(result);
+        }
+
+        // now test lock free push relabel
+        if ((i < 3 || i > 5) && false) {
+            start = CycleTimer::currentSeconds();
+            result = pushRelabelLockFree(graphs[i], 0, (graphs[i]->n)-1);
+            finalTime = CycleTimer::currentSeconds() - start;
+            if (i < numGraphs) {
+                pushRelabelCPULFTimes[i] = finalTime;
+                std::cout << "pushRelabelLFCPU time: " << pushRelabelCPULFTimes[i] << std::endl;
+                std::cout << "pushRelabelLFCPU flow: " << result->maxFlow << std::endl;
+                std::cout << "Speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelCPULFTimes[i]) << std::endl;
+            }
+            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+            if (!check) {
+                std::cout << "pushRelabelLFCPU flows don't agree with max flow on graph " << i << std::endl;
+            }
+            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                std::cout << "pushRelabelLFCPU flow doesn't agree with refFlow on graph " << i << std::endl;
+            }
+
+            free(result->finalEdgeFlows);
+            free(result);
+        }
+
+        // test lock free push relabel for GPU
+        if ((i < 3 || i > 5) && testPushRelabel) {
+            start = CycleTimer::currentSeconds();
+            result = pushRelabelLockFreeGPU(graphs[i], 0, (graphs[i]->n)-1);
+            finalTime = CycleTimer::currentSeconds() - start;
+            if (i < numGraphs) {
+                pushRelabelGPULFTimes[i] = finalTime;
+                std::cout << "pushRelabelLFGPU time: " << pushRelabelGPULFTimes[i] << std::endl;
+                std::cout << "pushRelabelLFGPU flow: " << result->maxFlow << std::endl;
+                std::cout << "Speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelGPULFTimes[i]) << std::endl;
+            }
+            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+            if (!check) {
+                std::cout << "pushRelabelLFGPU flows don't agree with max flow on graph " << i << std::endl;
+            }
+            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                std::cout << "pushRelabelLFGPU flow doesn't agree with refFlow on graph " << i << std::endl;
             }
 
             free(result->finalEdgeFlows);

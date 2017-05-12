@@ -167,7 +167,7 @@ void relabel(Graph *g, int *flowMatrix, int *height, int u) {
     height[u] = curMin + 1;
 }
 
-//Push-relabel algorithm to find max s-t flow
+// Push-relabel algorithm to find max s-t flow
 Flow *pushRelabelSeq(Graph *g, int s, int t) {
     int *flowMatrix = (int *)calloc((g->n * g->n), sizeof(int));
     int *height = (int *)calloc(g->n, sizeof(int));
