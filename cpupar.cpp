@@ -349,13 +349,20 @@ Flow *pushRelabelLockFree(Graph *g, int s, int t) {
 
     // now break up vertices in chunks
     #pragma omp parallel for schedule(static)
-    for (int i = 0; i < omp_get_num_threads(); i++) {
-        int gap = g->n / omp_get_num_threads();
-        int startVx = i * gap;
-        int endVx = startVx + gap; // exclusive
-        if (i == (omp_get_num_threads() - 1)) {
-            endVx = g->n;
+    for (int i = 0; i < std::min(g->n, omp_get_num_threads()); i++) {
+        int startVx, endVx;
+        if (g->n < omp_get_num_threads()) {
+            startVx = i;
+            endVx = i+1;
+        } else {
+            int gap = g->n / omp_get_num_threads();
+            startVx = i * gap;
+            endVx = startVx + gap; // exclusive
+            if (i == (omp_get_num_threads() - 1)) {
+                endVx = g->n;
+            }
         }
+        
         while (netFlowOutS != netFlowInT) {
             for (int u = startVx; u < endVx; u++) {
                 if ((u == s) || (u == t)) continue;

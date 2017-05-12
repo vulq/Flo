@@ -6,12 +6,8 @@
 #include <cuda_runtime.h>
 #include <driver_functions.h>
 #include <math_constants.h>
-#include <iostream>
 
 #include "pushRelabelGPU.h"
-#include "CycleTimer.h"
-
-#define DEBUG
 
 #ifdef DEBUG
 #define cudaCheckError(ans) { cudaAssert((ans), __FILE__, __LINE__); }
@@ -131,7 +127,6 @@ Flow *pushRelabelLockFreeGPU(Graph *g, int s, int t) {
                    cudaMemcpyHostToDevice));
 
     int numBlocks = UPDIV((g->n - 2), threadsPerBlock.x);
-    double start = CycleTimer::currentSeconds();
     pushRelabelLockFreeKernel<<<numBlocks, threadsPerBlock>>>(residualFlow,
         height, excessFlow, netFlowOutS, netFlowInT, s, t, g->n);
 
@@ -139,8 +134,6 @@ Flow *pushRelabelLockFreeGPU(Graph *g, int s, int t) {
     free(tempExcessFlows);
 
     cudaCheckError(cudaThreadSynchronize());
-    double final = CycleTimer::currentSeconds() - start;
-    std::cout << "time: " << final << std::endl;
 
     cudaCheckError(cudaMemcpy(finalFlow, residualFlow, sizeof(int) * (g->n * g->n),
                cudaMemcpyDeviceToHost));

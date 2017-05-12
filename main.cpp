@@ -6,12 +6,165 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <string>
+#include <tuple>
 #include "CycleTimer.h"
 #include "sequential.h"
 #include "cpupar.h"
 #include "pushRelabelGPU.h"
 
 #define IDX(i, j, n) ((i) * (n) + (j))
+
+struct FlowGraphResult {
+    int flow;
+    std::vector<std::tuple<int, int, int>> *flowEdges;
+};
+
+class FlowGraph {
+    int n;
+public:
+    FlowGraph(int);
+    ~FlowGraph();
+    void SetS(int);
+    void SetT(int);
+    void AddEdge(int, int, int);
+    void DeleteEdge(int, int);
+    void AddEdges(std::vector<std::tuple<int, int, int>>*);
+    void DeleteEdges(std::vector<std::tuple<int, int>>*);
+    FlowGraphResult *FlowEdmondsKarp();
+    FlowGraphResult *FlowEdmondsKarp(std::string);
+    FlowGraphResult *FlowDinic();
+    FlowGraphResult *FlowDinic(std::string);
+    FlowGraphResult *FlowPushRelabel();
+    FlowGraphResult *FlowPushRelabel(std::string);
+private:
+    FlowGraphResult *ProcessResult(Flow *);
+    int *capacities;
+    int s;
+    int t;
+};
+
+FlowGraph::FlowGraph(int a) {
+    n = a;
+    capacities = (int *)calloc((n * n), sizeof(int));
+    s = 0;
+    t = n-1;
+}
+
+FlowGraph::~FlowGraph() {
+    free(capacities);
+}
+
+void FlowGraph::SetS(int a) {
+    s = a;
+}
+
+void FlowGraph::SetT(int a) {
+    t = a;
+}
+
+void FlowGraph::AddEdge(int u, int v, int cap) {
+    if ((0 <= u) && (u < n) && (0 <= v) && (v < n)) {
+        capacities[IDX(u, v, n)] = cap;
+    }
+}
+
+void FlowGraph::DeleteEdge(int u, int v) {
+    if ((0 <= u) && (u < n) && (0 <= v) && (v < n)) {
+        capacities[IDX(u, v, n)] = 0;
+    }
+}
+
+void FlowGraph::AddEdges(std::vector<std::tuple<int, int, int>> *edges) {
+    for (auto it = (*edges).begin(); it != (*edges).end(); it++) {
+        int u = std::get<0>(*it);
+        int v = std::get<1>(*it);
+        int cap = std::get<2>(*it);
+        AddEdge(u, v, cap);
+    }
+}
+
+void FlowGraph::DeleteEdges(std::vector<std::tuple<int, int>> *edges) {
+    for (auto it = (*edges).begin(); it != (*edges).end(); it++) {
+        int u = std::get<0>(*it);
+        int v = std::get<1>(*it);
+        DeleteEdge(u, v);
+    }
+}
+
+FlowGraphResult *FlowGraph::ProcessResult(Flow *result) {
+    FlowGraphResult *finalResult = (FlowGraphResult *)malloc(sizeof(FlowGraphResult));
+    finalResult->flow = result->maxFlow;
+    std::vector<std::tuple<int, int, int>> *flowEdges = new std::vector<std::tuple<int, int, int>>;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            int cap = result->finalEdgeFlows[IDX(i, j, n)];
+            if (cap > 0) {
+                (*flowEdges).push_back(std::make_tuple(i, j, cap));
+            }
+        }
+    }
+    finalResult->flowEdges = flowEdges;
+    free(result->finalEdgeFlows);
+    free(result);
+    return finalResult;
+}
+
+FlowGraphResult *FlowGraph::FlowEdmondsKarp() {
+    return FlowEdmondsKarp("cpu");
+}
+
+FlowGraphResult *FlowGraph::FlowEdmondsKarp(std::string mode) {
+    Graph *g = (Graph *)malloc(sizeof(Graph));
+    g->n = n;
+    g->capacities = capacities;
+    Flow *result;
+    if (mode == "seq") {
+        result = edKarpSeq(g, s, t);
+    } else {
+        result = edKarpCPU(g, s, t);
+    }
+    free(g);
+    return ProcessResult(result);
+}
+
+FlowGraphResult *FlowGraph::FlowDinic() {
+    return FlowDinic("cpu");
+}
+
+FlowGraphResult *FlowGraph::FlowDinic(std::string mode) {
+    Graph *g = (Graph *)malloc(sizeof(Graph));
+    g->n = n;
+    g->capacities = capacities;
+    Flow *result;
+    if (mode == "seq") {
+        result = dinicSeq(g, s, t);
+    } else {
+        result = dinicCPU(g, s, t);
+    }
+    free(g);
+    return ProcessResult(result);
+}
+
+FlowGraphResult *FlowGraph::FlowPushRelabel() {
+    return FlowPushRelabel("cpu");
+}
+
+FlowGraphResult *FlowGraph::FlowPushRelabel(std::string mode) {
+    Graph *g = (Graph *)malloc(sizeof(Graph));
+    g->n = n;
+    g->capacities = capacities;
+    Flow *result;
+    if (mode == "seq") {
+        result = pushRelabelSeq(g, s, t);
+    } else if (mode == "cpu") {
+        result = pushRelabelLockFree(g, s, t);
+    } else {
+        result = pushRelabelLockFreeGPU(g, s, t);
+    }
+    free(g);
+    return ProcessResult(result);
+}
 
 // Generates a random directed graph that ensures there exists some s-t path, where
 // s is node 0 and t is node numVxs - 1. 
@@ -85,7 +238,7 @@ bool checkFlow(int totalFlow, int *flows, int n) {
     return (sFlow == tFlow) && (sFlow == totalFlow);
 }
 
-int main() {
+void runTests() {
     int refFlow;
     Flow *result;
     bool check;
@@ -299,6 +452,31 @@ int main() {
         free(graphs[i]->capacities);
         free(graphs[i]);
     }
+}
+
+int main() {
+    // runTests();
+    FlowGraph graph(6);
+    std::vector<std::tuple<int, int, int>> edges;
+    edges.push_back(std::make_tuple(0, 1, 4));
+    edges.push_back(std::make_tuple(0, 2, 2));
+    edges.push_back(std::make_tuple(1, 3, 3));
+    edges.push_back(std::make_tuple(2, 3, 2));
+    edges.push_back(std::make_tuple(2, 4, 3));
+    edges.push_back(std::make_tuple(3, 2, 1));
+    edges.push_back(std::make_tuple(3, 5, 2));
+    edges.push_back(std::make_tuple(4, 5, 4));
+    edges.push_back(std::make_tuple(3, 0, 5));
+    graph.AddEdges(&edges);
+    graph.DeleteEdge(3, 0);
+    auto result = graph.FlowEdmondsKarp();
+    printf("max flow of %d\n", result->flow);
+    for (auto it = (*(result->flowEdges)).begin(); it != (*(result->flowEdges)).end(); it++) {
+        printf("capacity of %d pushed on edge (%d,%d)\n", 
+               std::get<0>(*it), std::get<1>(*it), std::get<2>(*it));
+    }
+    delete(result->flowEdges);
+    free(result);
 
     return 0;
 }
