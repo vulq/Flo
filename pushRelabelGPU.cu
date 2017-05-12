@@ -82,11 +82,6 @@ __global__ void pushRelabelLockFreeKernel(int *residualFlow,
     }
 }
 
-// TODO: INITIALIZE HEIGHT AND EXCESS FLOW TO 0 IN KERNEL
-
-// TODO: IN KERNEL, DO A SYNCH, AND THEN EACH THREAD COMPUTES THE ACTUAL FLOW ARRAY
-// VALUES FOR ITS ROW IN MATRIX
-
 // Push-relabel algorithm to find max s-t flow. Based on lock-free implementation
 // specified by Bo Hong. Uses one CUDA thread per vertex.
 Flow *pushRelabelLockFreeGPU(Graph *g, int s, int t) {

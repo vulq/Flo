@@ -43,7 +43,9 @@ Graph *generateGraph(int numVxs, int numEdges, int maxCap) {
         capacity = (rand() % (maxCap - 1)) + 1;
         int j = rand() % g->n;
         int k = rand() % g->n;
-        g->capacities[IDX(j, k, g->n)] = capacity;
+        if (j != k) {
+            g->capacities[IDX(j, k, g->n)] = capacity;
+        }
     }
     return g;
 }
@@ -87,21 +89,18 @@ int main() {
     int refFlow;
     Flow *result;
     bool check;
-    srand(0); // TODO: change this to time(NULL) for randomness btwn trials
+    srand(0);
     bool testEdmondsKarp = false;
     bool testDinics = false;
-    bool testPushRelabel = true;
-    int numGraphs = 6;
-    // TODO: also maybe use different large graphs for benchmarking different algs? i.e. use
-    // the 20k ones and maybe even more, larger (higher V?) ones for Dinic's and Push-relabel 
-    // but not EdKarp
-    int smallGraphNum = 100; // TODO: shrink/remove this when have correctness, don't run
-                              // all these tests when just trying to benchmark
+    bool testPushRelabel = false;
+    int numGraphs = 10;
+    int trials = 3;
+    int smallGraphNum = 0; // used for correctness testing, not benchmarking
     int totalGraphs = numGraphs + smallGraphNum;
     double start, finalTime;
-    int numVxs[] = {500, 10000, 10000, 20000, 20000, 30000};
-    int numEdges[] = {10000, 50000, 1000000, 12000000, 100000000, 1000000};
-    int maxCap[] = {500, 100, 50, 30, 20, 30};
+    int numVxs[] = {500, 500, 2000, 2000, 5000, 5000, 20000, 20000, 40000, 40000};
+    int numEdges[] = {1000, 5000, 5000, 10000, 10000, 20000, 50000, 100000, 100000, 500000};
+    int maxCap = 50;
     Graph *graphs[totalGraphs];
     double edKarpSeqTimes[numGraphs];
     double dinicSeqTimes[numGraphs];
@@ -111,7 +110,7 @@ int main() {
     double pushRelabelCPULFTimes[numGraphs];
     double pushRelabelGPULFTimes[numGraphs];
     for (int i = 0; i < numGraphs; i++) {
-        graphs[i] = generateGraph(numVxs[i], numEdges[i], maxCap[i]);
+        graphs[i] = generateGraph(numVxs[i], numEdges[i], maxCap);
     }
     // generate small graphs too
     for (int i = numGraphs; i < totalGraphs; i++) {
@@ -122,180 +121,183 @@ int main() {
         int cap = (rand() % 1000) + 20;
         graphs[i] = generateGraph(vxs, edges, cap);
     }
-    
     for (int i = 0; i < totalGraphs; i++) {
-        refFlow = -1;
+        printf("graph %d, %d vxs, %d edges\n", i, numVxs[i], numEdges[i]);
+        for (int j = 0; j < trials; j++) {
+            refFlow = -1;
 
-        // first, test Edmonds-Karp
-        if ((i < 3 || i > 5) && testEdmondsKarp) {
-            start = CycleTimer::currentSeconds();
-            result = edKarpSeq(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                edKarpSeqTimes[i] = finalTime;
-                std::cout << "edKarpSeq time: " << edKarpSeqTimes[i] << std::endl;
-                std::cout << "edKarpSeq flow: " << result->maxFlow << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "edKarp flows don't agree with max flow on graph " << i << std::endl;
-            }
-            refFlow = result->maxFlow;
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-        
-        // now Dinics
-        if (testDinics) {
-            start = CycleTimer::currentSeconds();
-            result = dinicSeq(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                dinicSeqTimes[i] = finalTime;
-                std::cout << "dinicSeq time: " << dinicSeqTimes[i] << std::endl;
-                std::cout << "dinicSeq flow: " << result->maxFlow << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "dinic flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "dinic flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-            if (refFlow == -1) {
+            // first, test Edmonds-Karp
+            if (testEdmondsKarp) {
+                start = CycleTimer::currentSeconds();
+                result = edKarpSeq(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    edKarpSeqTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    edKarpSeqTimes[i] /= trials;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "edKarp flows don't agree with max flow on graph " << i << std::endl;
+                }
                 refFlow = result->maxFlow;
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
+            
+            // now Dinics
+            if (testDinics) {
+                start = CycleTimer::currentSeconds();
+                result = dinicSeq(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    dinicSeqTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    dinicSeqTimes[i] /= trials;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "dinic flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "dinic flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+                if (refFlow == -1) {
+                    refFlow = result->maxFlow;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
             }
 
-            free(result->finalEdgeFlows);
-            free(result);
+            // now Push-relabel
+            if (testPushRelabel) {
+                start = CycleTimer::currentSeconds();
+                result = pushRelabelSeq(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    pushRelabelSeqTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    pushRelabelSeqTimes[i] /= trials;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "push-relabel flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "push-relabel flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+
+                if (refFlow == -1) {
+                    refFlow = result->maxFlow;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
+
+            // now test Edmonds-Karp, CPU parallel
+            if (testEdmondsKarp) {
+                start = CycleTimer::currentSeconds();
+                result = edKarpCPU(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    edKarpCPUTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    edKarpCPUTimes[i] /= trials;
+                    std::cout << "Avg speedup over edKarpSeq: " << (edKarpSeqTimes[i] / edKarpCPUTimes[i]) << std::endl;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "edKarpCPU flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "edKarpCPU flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
+
+            // now test Dinics, CPU parallel
+            if (testDinics) {
+                start = CycleTimer::currentSeconds();
+                result = dinicCPU(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    dinicCPUTimes[i] += finalTime;
+                }
+                 if (j == (trials - 1)) {
+                    dinicCPUTimes[i] /= trials;
+                    std::cout << "Avg speedup over dinicSeq: " << (dinicSeqTimes[i] / dinicCPUTimes[i]) << std::endl;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "dinicCPU flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "dinicCPU flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
+
+            // now test lock free push relabel
+            if (testPushRelabel) {
+                start = CycleTimer::currentSeconds();
+                result = pushRelabelLockFree(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    pushRelabelCPULFTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    pushRelabelCPULFTimes[i] /= trials;
+                    std::cout << "Avg speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelCPULFTimes[i]) << std::endl;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "pushRelabelLFCPU flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "pushRelabelLFCPU flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
+
+            // test lock free push relabel for GPU
+            if (testPushRelabel) {
+                start = CycleTimer::currentSeconds();
+                result = pushRelabelLockFreeGPU(graphs[i], 0, (graphs[i]->n)-1);
+                finalTime = CycleTimer::currentSeconds() - start;
+                if (i < numGraphs) {
+                    pushRelabelGPULFTimes[i] += finalTime;
+                }
+                if (j == (trials - 1)) {
+                    pushRelabelGPULFTimes[i] /= trials;
+                    std::cout << "Avg GPU speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelGPULFTimes[i]) << std::endl;
+                }
+                check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
+                if (!check) {
+                    std::cout << "pushRelabelLFGPU flows don't agree with max flow on graph " << i << std::endl;
+                }
+                if ((refFlow != -1) && (result->maxFlow != refFlow)) {
+                    std::cout << "pushRelabelLFGPU flow doesn't agree with refFlow on graph " << i << std::endl;
+                }
+
+                free(result->finalEdgeFlows);
+                free(result);
+            }
         }
-
-        // now Push-relabel
-        if ((i < 3 || i > 5) && testPushRelabel) {
-            start = CycleTimer::currentSeconds();
-            result = pushRelabelSeq(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                pushRelabelSeqTimes[i] = finalTime;
-                std::cout << "pushRelabelSeq time: " << pushRelabelSeqTimes[i] << std::endl;
-                std::cout << "pushRelabelSeq flow: " << result->maxFlow << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "push-relabel flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "push-relabel flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-
-            if (refFlow == -1) {
-                refFlow = result->maxFlow;
-            }
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-
-        // now test Edmonds-Karp, CPU parallel
-        if ((i < 4 || i > 4) && testEdmondsKarp) {
-            start = CycleTimer::currentSeconds();
-            result = edKarpCPU(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                edKarpCPUTimes[i] = finalTime;
-                std::cout << "edKarpCPU time: " << edKarpCPUTimes[i] << std::endl;
-                std::cout << "edKarpCPU flow: " << result->maxFlow << std::endl;
-                std::cout << "Speedup over edKarpSeq: " << (edKarpSeqTimes[i] / edKarpCPUTimes[i]) << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "edKarpCPU flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "edKarpCPU flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-
-        // now test Dinics, CPU parallel
-        if (testDinics) {
-            start = CycleTimer::currentSeconds();
-            result = dinicCPU(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                dinicCPUTimes[i] = finalTime;
-                std::cout << "dinicCPU time: " << dinicCPUTimes[i] << std::endl;
-                std::cout << "dinicCPU flow: " << result->maxFlow << std::endl;
-                std::cout << "Speedup over dinicSeq: " << (dinicSeqTimes[i] / dinicCPUTimes[i]) << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "dinicCPU flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "dinicCPU flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-
-        // now test lock free push relabel
-        if ((i < 3 || i > 5) && false) {
-            start = CycleTimer::currentSeconds();
-            result = pushRelabelLockFree(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                pushRelabelCPULFTimes[i] = finalTime;
-                std::cout << "pushRelabelLFCPU time: " << pushRelabelCPULFTimes[i] << std::endl;
-                std::cout << "pushRelabelLFCPU flow: " << result->maxFlow << std::endl;
-                std::cout << "Speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelCPULFTimes[i]) << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "pushRelabelLFCPU flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "pushRelabelLFCPU flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-
-        // test lock free push relabel for GPU
-        if ((i < 3 || i > 5) && testPushRelabel) {
-            start = CycleTimer::currentSeconds();
-            result = pushRelabelLockFreeGPU(graphs[i], 0, (graphs[i]->n)-1);
-            finalTime = CycleTimer::currentSeconds() - start;
-            if (i < numGraphs) {
-                pushRelabelGPULFTimes[i] = finalTime;
-                std::cout << "pushRelabelLFGPU time: " << pushRelabelGPULFTimes[i] << std::endl;
-                std::cout << "pushRelabelLFGPU flow: " << result->maxFlow << std::endl;
-                std::cout << "Speedup over pushRelabelSeq: " << (pushRelabelSeqTimes[i] / pushRelabelGPULFTimes[i]) << std::endl;
-            }
-            check = checkFlow(result->maxFlow, result->finalEdgeFlows, graphs[i]->n);
-            if (!check) {
-                std::cout << "pushRelabelLFGPU flows don't agree with max flow on graph " << i << std::endl;
-            }
-            if ((refFlow != -1) && (result->maxFlow != refFlow)) {
-                std::cout << "pushRelabelLFGPU flow doesn't agree with refFlow on graph " << i << std::endl;
-            }
-
-            free(result->finalEdgeFlows);
-            free(result);
-        }
-
         free(graphs[i]->capacities);
         free(graphs[i]);
-
-        // TODO: repeat this for CPU and GPU, and then compare times, output speedup, etc.
-
-        // TODO: when want to test speedup with different number of CPU/GPU threads, can do 
-        // dynamically here, or need to recompile with different numthreads constants?
     }
 
     return 0;
